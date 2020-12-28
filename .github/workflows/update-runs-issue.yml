@@ -13,7 +13,10 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: list issues
-        run: hub issue update 1 -m "$(date)"
+        run: |
+          hub issue show 1 > 1.issue
+          date >> 1.issue
+          hub issue update 1 -F 1.issue
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
