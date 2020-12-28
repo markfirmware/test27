@@ -1,0 +1,20 @@
+name: update runs issue
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+  workflow_dispatch:
+
+jobs:
+  build:
+   runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: list issues
+        run: hub issue
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
