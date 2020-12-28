@@ -15,6 +15,9 @@ jobs:
       - name: list issues
         run: |
           hub issue show 1 > 1.issue
+          echo aaaa
+          cat 1.issue
+          echo bbbb
           date >> 1.issue
           hub issue update 1 -F 1.issue
         env:
