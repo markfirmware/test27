@@ -8,17 +8,24 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  update:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - name: list issues
+      - name: update report
         run: |
           hub issue show 1 > 1.issue
           echo aaaa
           cat 1.issue
           echo bbbb
+          sed -i d/^\*/ 1.issue
+          echo aaaa
+          cat 1.issue
+          echo bbbb
           date >> 1.issue
+          echo aaaa
+          cat 1.issue
+          echo bbbb
           hub issue update 1 -F 1.issue
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
