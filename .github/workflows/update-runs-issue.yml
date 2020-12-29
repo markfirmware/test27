@@ -18,7 +18,7 @@ jobs:
           echo aaaa
           cat 1.issue
           echo bbbb
-          sed -i '/^\*/,$d' 1.issue
+          sed -i '/^\*/d' 1.issue
           echo aaaa
           cat 1.issue
           echo bbbb
