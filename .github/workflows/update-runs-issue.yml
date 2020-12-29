@@ -18,21 +18,13 @@ jobs:
         run: |
           set -x
           hub issue show 2 > issue
-          echo aaaa
           cat issue
-          echo bbbb
           sed -i '/^\*/d' issue
-          echo aaaa
           cat issue
-          echo bbbb
           sed -i '1,1s/^# //' issue
-          echo aaaa
           cat issue
-          echo bbbb
           date >> issue
-          echo aaaa
           cat issue
-          echo bbbb
           hub issue update 2 -F issue
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
