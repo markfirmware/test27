@@ -22,6 +22,10 @@ jobs:
           echo aaaa
           cat 1.issue
           echo bbbb
+          sed -i '1,1s/^# //' 1.issue
+          echo aaaa
+          cat 1.issue
+          echo bbbb
           date >> 1.issue
           echo aaaa
           cat 1.issue
