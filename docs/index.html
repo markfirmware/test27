@@ -7,10 +7,73 @@
         <script src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/2.8.0/alpine.js"></script>
         <script note="github login">
             function loginData() {
-                return { state: 'token_requested', auth_token: '', login: '' };
+                return {
+                    state: 'entering_token',
+                    auth_token: '',
+                    login: '',
+                    validate: function (update) {
+                        fetch("https://api.github.com/user", {
+                            headers: {
+                                Authorization: ('token ' + this.auth_token),
+                                Accept: 'application/vnd.github.v3+json'
+                            }
+                        })
+                            .then((r) => r.json())
+                            .then((j) => {
+                                update(j.login);
+                            })
+                    },
+                    getSomeRepos: function (repos_buffer, page_number, done) {
+                        getRepos(this.auth_token, done, [], 1);
+                    }
+                };
             }
-            function connect(token, update) {
-                fetch("https://api.github.com/user", {
+        </script>
+        <script note="github action runs">
+            function filterWorkflow(token, buffer, more_repos, done) {
+                if (more_repos.length == 0) {
+                    done(buffer);
+                } else {
+                    var repo = more_repos[0];
+                    console.log(repo.name);
+                    more_repos.shift();
+                    fetch("https://api.github.com/repos/markfirmware/" + repo.name + "/actions/workflows",
+                        {
+                            headers: {
+                                Authorization: ('token ' + token),
+                                Accept: 'application/vnd.github.v3+json'
+                            }
+                        })
+                        .then((r) => {
+                            return r.json();
+                        })
+                        .then((j) => {
+                            if (j.total_count != 0) {
+                                buffer.push(repo);
+                            }
+                            filterWorkflow(token, buffer, more_repos, done);
+                        });
+                };
+            }
+            function runsData() {
+                return { runs: [], deleted_run_urls: [] };
+            }
+            function reloadRuns(token, done) {
+                getRepos(
+                    token,
+                    (repos) => {
+                        console.log(repos);
+                        reloadRunsBatch(token, done, repos.map((r) => r.name), [], 1);
+                    },
+                    [],
+                    1
+                );
+            }
+            function reloadRuns2(token, repos, done) {
+                reloadRunsBatch(token, done, repos.map((r) => r.name), [], 1);
+            }
+            function getRepos(token, done, repos_buffer, page_number) {
+                fetch("https://api.github.com/users/markfirmware/repos?per_page=100&page=" + page_number, {
                     headers: {
                         Authorization: ('token ' + token),
                         Accept: 'application/vnd.github.v3+json'
@@ -18,37 +81,43 @@
                 })
                     .then((r) => r.json())
                     .then((j) => {
-                        update({ login: j.login });
+                        var batch = j;
+                        if (batch.length != 0) {
+                            repos_buffer = repos_buffer.concat(batch);
+                            getRepos(token, done, repos_buffer, page_number + 1);
+                        } else {
+                            repos_buffer.sort((x, y) => {
+                                let a = x.name,
+                                    b = y.name;
+                                return a == b ? 0 : a < b ? 1 : -1;
+                            });
+                            done(repos_buffer);
+                        }
                     });
-                return true;
             }
-        </script>
-        <script note="github action runs">
-            function runsData() {
-                return { runs: [], deleted_run_urls: [], hidden_run_urls: [] };
-            }
-            function reloadRuns(done) {
-                reloadRunsBatch(done, ["audit", "test27"], [], 1);
-            }
-            function reloadRunsBatch(done, repos, runs_buffer, page_number) {
+            function reloadRunsBatch(token, done, repos, runs_buffer, page_number) {
                 fetch("https://api.github.com/repos/markfirmware/" + repos[0] + "/actions/runs?per_page=100&page=" + page_number, {
                     headers: {
+                        Authorization: ('token ' + token),
                         Accept: 'application/vnd.github.v3+json'
                     }
                 })
-                    .then((r) => r.json())
+                    .then((r) => {
+                        return r.json();
+                    })
                     .then((j) => {
                         var batch = j.workflow_runs;
-                        if (batch.length != 0) {
-                            runs_buffer = runs_buffer.concat(batch);
-                            reloadRunsBatch(done, repos, runs_buffer, page_number + 1);
+                        console.log(repos[0], page_number, batch.length, j.total_count);
+                        runs_buffer = runs_buffer.concat(batch);
+                        if (batch.length != 0 && batch.length + (page_number - 1) * 100 != j.total_count) {
+                            reloadRunsBatch(token, done, repos, runs_buffer, page_number + 1);
                         } else if (repos.length > 1) {
                             repos.shift();
-                            reloadRunsBatch(done, repos, runs_buffer, 1);
+                            reloadRunsBatch(token, done, repos, runs_buffer, 1);
                         } else {
                             runs_buffer.sort((x, y) => {
-                                let a = x.name + x.run_number,
-                                    b = y.name + y.run_number;
+                                let a = x.repository.name + x.run_number,
+                                    b = y.repository.name + y.run_number;
                                 return a == b ? 0 : a < b ? 1 : -1;
                             });
                             done(runs_buffer);
@@ -73,6 +142,11 @@
         </script>
     </head>
     <body class=font-mono>
+        <div>
+            <a href=https://github.com/markfirmware/test27 class=underline>
+                markfirmware/test27
+            </a>
+        </div>
         <div x-id=login x-data=loginData()>
             <div note="diagnostics">
                 diagnostics
@@ -83,79 +157,94 @@
                 <span x-text="login">
                 </span>
             </div>
-            <template x-if="state == 'token_requested'">
-                <div x-data>
-                    <input x-model="$component('login').auth_token" size=40 placeholder="40 character auth token">
-                    <template x-if="$component('login').auth_token.length == 40">
-                        <div x-data x-init="$component('login').state = 'login_requested'">
+            <template x-if="state == 'entering_token'">
+                <div>
+                    <template x-if="auth_token.length == 40">
+                        <div x-data x-init="$component('login').state = 'validating_token'">
                         </div>
                     </template>
+                    <input type=password x-model=auth_token size=40 placeholder="40 character auth token">
                 </div>
             </template>
-            <template x-if="state == 'login_requested'">
+            <template x-if="state == 'validating_token'">
                 <div x-data x-init="
-                    connect($component('login').auth_token, (new_data) => {
-                        $component('login').login = new_data.login;
-                        $component('login').state = 'login_received';
+                    $parent.validate((new_login) => {
+                        $parent.login = new_login;
+                        $parent.state = 'login_received';
                     })">
-                    connecting ...
+                    validating ...
                 </div>
             </template>
             <template x-if="state == 'login_received'">
-                <div x-data>
-                    <span class=italic x-text="'careful! using github personal authentication token for user ' + $component('login').login">
+                <div>
+                    <span class=italic x-text="'careful! using github personal authentication token for user ' + login">
                     </span>
-                </div>
+                </div>                
             </template>
         </div>
-        <a href=https://github.com/markfirmware/test27 class=underline>
-            markfirmware/test27
-        </a>
-        <div x-data=runsData() x-init="reloadRuns((x) => runs = x)">
-            <button
-                :class="{ 'border': true,
-                            'bg-gray-200': true,
-                            'hover:bg-gray-300': true,
-                            'border-gray-400': true
-                        }"
-                @click="hidden_run_urls = deleted_run_urls.slice(0); reloadRuns((x) => runs = x)">
-                reload runs
-            </button>
-            <ul class=text-yellow-400>
-                <template x-for="run in runs" :key=run.run_number>
-                    <li x-show=!hidden_run_urls.includes(run.url)
-                        :class="{ 'line-through': deleted_run_urls.includes(run.url),
-                                    'text-red-400': run.conclusion == 'failure',
-                                    'font-bold': run.conclusion == 'failure',
-                                    'text-green-800': run.conclusion == 'success'
-                                }">
+        <template x-data x-if="$component('login').state == 'login_received'">
+            <div x-id=repos x-data="{ repos: [] }" x-init="
+                $component('login').getSomeRepos([], 1, (x) =>
+                    filterWorkflow($component('login').auth_token, [], x, (fewer) => repos = fewer))">
+                <template x-if="repos.length == 0">
+                    <span>
+                        finding repos that have workflows ...
+                    </span>
+                </template>
+                <template x-for="repo in repos" :key=repo.name>
+                    <span x-text=repo.name></span>
+                </template>
+                <template x-if="repos.length != 0">
+                    <div x-data=runsData() x-init="reloadRuns2($component('login').auth_token, $component('repos').repos, (x) => runs = x)">
                         <button
                             :class="{ 'border': true,
                                         'bg-gray-200': true,
-                                        'hover:bg-gray-300': !($component('login').state != 'login_received' || run.status != 'completed' || deleted_run_urls.includes(run.url)),
-                                        'cursor-default': ($component('login').state != 'login_received' || run.status != 'completed' || deleted_run_urls.includes(run.url)),
-                                        'border-gray-400': true,
-                                        'line-through': deleted_run_urls.includes(run.url)
+                                        'hover:bg-gray-300': true,
+                                        'border-gray-400': true
                                     }"
-                            :disabled="$component('login').state != 'login_received' || run.status != 'completed' || deleted_run_urls.includes(run.url)"
-                            @click="deleteRun($component('login').auth_token, run.url, deleted_run_urls)">
-                            delete
+                            @click="reloadRuns2($component('login').auth_token, $component('repos').repos, (x) => runs = x)"
+                            x-text="'reload runs ('+ runs.length + ')'">
                         </button>
-                        <a :href=run.html_url class=underline>
-                            <span x-text=run.run_number>
-                            </span>
-                            <span x-show="run.status != 'completed'" x-text=run.status>
-                            </span>
-                            <span x-text=run.conclusion>
-                            </span>
-                            <span x-text=run.name>
-                            </span>
-                            <span x-text=run.event>
-                            </span>
-                        </a>
-                    </li>
+                        <ul class=text-yellow-400>
+                            <template x-for="run in runs" :key=run.run_number>
+                                <li
+                                    :class="{ 'line-through': deleted_run_urls.includes(run.url),
+                                                'text-red-400': run.conclusion == 'failure',
+                                                'font-bold': run.conclusion == 'failure',
+                                                'text-green-800': run.conclusion == 'success'
+                                            }">
+                                    <button
+                                        :class="{ 'border': true,
+                                                    'bg-gray-200': true,
+                                                    'hover:bg-gray-300': !($component('login').state != 'login_received' || run.status != 'completed' || deleted_run_urls.includes(run.url)),
+                                                    'cursor-default': ($component('login').state != 'login_received' || run.status != 'completed' || deleted_run_urls.includes(run.url)),
+                                                    'border-gray-400': true,
+                                                    'line-through': deleted_run_urls.includes(run.url)
+                                                }"
+                                        :disabled="$component('login').state != 'login_received' || run.status != 'completed' || deleted_run_urls.includes(run.url)"
+                                        @click="deleteRun($component('login').auth_token, run.url, deleted_run_urls)">
+                                        delete
+                                    </button>
+                                    <a :href="run.html_url + '?check_suite_focus=true'" class=underline>
+                                        <span x-text=run.repository.name>
+                                        </span>
+                                        <span x-text=run.name>
+                                        </span>
+                                        <span x-text=run.event>
+                                        </span>
+                                        <span x-text=run.run_number>
+                                        </span>
+                                        <span x-text=run.conclusion>
+                                        </span>
+                                        <span x-show="run.status != 'completed'" x-text=run.status>
+                                        </span>
+                                    </a>
+                                </li>
+                            </template>
+                        </ul>
+                    </div>
                 </template>
-            </ul>
-        </div>
+            </div>
+        </template>
     </body>
 </html>
