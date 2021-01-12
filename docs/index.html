@@ -148,15 +148,6 @@
             </a>
         </div>
         <div x-id=login x-data=loginData()>
-            <div note="diagnostics">
-                diagnostics
-                state
-                <span x-text="state">
-                </span>
-                login
-                <span x-text="login">
-                </span>
-            </div>
             <template x-if="state == 'entering_token'">
                 <div>
                     <template x-if="auth_token.length == 40">
@@ -177,6 +168,15 @@
             </template>
             <template x-if="state == 'login_received'">
                 <div>
+                    <button
+                        :class="{ 'border': true,
+                                    'bg-gray-200': true,
+                                    'hover:bg-gray-300': true,
+                                    'border-gray-400': true
+                                }"
+                        @click="logout = ''; state = 'entering_token'">
+                        logout
+                    </button>
                     <span class=italic x-text="'careful! using github personal authentication token for user ' + login">
                     </span>
                 </div>                
